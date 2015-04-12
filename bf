@@ -62,7 +62,7 @@ while (( i++ < ${#program} )); do
        fi
        ;;
 
-     -) if (( cell >= 0 )); then
+    -) if (( cell >= 0 )); then
          (( tape[cell] -- ))
        else
          echo "Runtime error" >&2
@@ -74,7 +74,7 @@ while (( i++ < ${#program} )); do
    \>) (( cell ++ )) ;;
    \<) (( cell -- )) ;;
 
-    .) printf -v output %o "$(( tape[cell] ${INTEGERCELLS-% 256} ))"
+    .) printf -v output %o "$(( tape[cell] ${INTEGERCELLS-+ 256 % 256} ))"
        printf "\\$output" ;;
 
     ,) IFS= read -r -n1 -d '' input
@@ -93,7 +93,7 @@ while (( i++ < ${#program} )); do
 
        if (( bracecount == 0 )); then
          # we found the closing ]
-         if (( tape[cell] ${INTEGERCELLS-% 256} == 0 )); then
+         if (( tape[cell] ${INTEGERCELLS-+ 256 % 256} == 0 )); then
            # jump
            i=j-1
          else
@@ -109,7 +109,7 @@ while (( i++ < ${#program} )); do
    \]) # go back to the previous [
        # if it's missing, error out and quit
        if (( ${#loop[@]} )); then
-         if (( tape[cell] ${INTEGERCELLS-% 256} != 0 )); then
+         if (( tape[cell] ${INTEGERCELLS-+ 256 % 256} != 0 )); then
            # jump back
            i=loop[-1]
          else
