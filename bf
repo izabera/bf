@@ -10,8 +10,8 @@
 # it prints debug informations if the environment variable DEBUG is found
 
 
-# needs bash 4.3 to reference array[-1] and to ignore NULs in the bf program
-# ok one could make it work even in bash2 but whatever
+# tested in bash 4.3
+# probably works in older versions too but i don't really care
 
 
 # usage: bf filename-of-your-bf-program
@@ -132,7 +132,7 @@ while (( i++ < ${#program} )); do
       esac
     done
 
-    jump[i]=j
+    jump[i]=j+1
 
   fi
 done

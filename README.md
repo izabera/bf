@@ -20,3 +20,5 @@ And TADA!... now I know brainfuck
 
 
 Beware: it's *SLOOOOOOOOOOOOW* (but it works)
+
+Note: much much faster than the first naïve version
