@@ -66,7 +66,7 @@ elif [[ ! -v program ]]; then
     usage >&2
     exit 1
   elif [[ -r $1 ]]; then
-    read -r -N 0 program < "$1"
+    program=$(< "$1")
   else
     echo "Couldn't read \`$1'" >&2
     exit 1
@@ -81,16 +81,17 @@ fi
 
 # 1. strip unnecessary crap
 program=${program//[!-[\]+.,><]}
+len=${#program}
 
 # 2. explode the string into an array
 i=-1
-while (( i++ < ${#program} )); do
+while (( i++ < len )); do
   code+=("${program:i:1}")
 done
 
 # 3. precompute the jumps
 bracecount=0 i=-1
-while (( i++ < ${#program} )); do
+while (( i++ < len )); do
   case ${code[i]} in
    '[') (( bracecount ++ )) ;;
    ']') (( bracecount -- )) ;;
@@ -107,13 +108,13 @@ fi
 
 # TODO: merge this in the previous loop
 i=-1
-while (( i++ < ${#program} )); do
+while (( i++ < len )); do
 
   if [[ ${code[i]} = '[' ]]; then
     bracecount=1 j=i 
 
     # this loop always finds the match
-    while (( j++ < ${#program} && bracecount > 0 )); do
+    while (( j++ < len && bracecount > 0 )); do
       case ${code[j]} in
         '[') (( bracecount ++ )) ;;
         ']') (( bracecount -- )) ;;
@@ -142,7 +143,7 @@ done
 
 
 i=-1
-while (( i++ < ${#program} )); do
+while (( i++ < len )); do
 
   debug 
 
