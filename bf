@@ -25,13 +25,13 @@ debug () {
   printf '<%s>' "${pos_tape[@]}"
   printf '\nneg_tape:'
   printf '<%s>' "${neg_tape[@]}"
-  printf '\nloop:'
-  printf '<%s>' "${loop[@]}"
-  printf '\ncell=%s i=%i j=%s code=%q bracecount=%s\n' "$cell" "$i" "$j" "${program:i:1}" "$bracecount"
+  printf '\njump:'
+  printf '<%s>' "${jump[@]}"
+  printf '\ncell=%s i=%i code=%s\n' "$cell" "$i" "${code[i]}"
 } >&2
 
 pos_tape=() neg_tape=()
-declare -i cell=0 i=-1 j=0 loop=() bracecount=0
+declare -i cell=0 i j jump=() bracecount
 
 # set it to an empty value if it's set to avoid messing with the math expansion
 if [[ $INTEGERCELLS ]]; then INTEGERCELLS= ; fi
@@ -73,11 +73,80 @@ elif [[ ! -v program ]]; then
   fi
 fi
 
+
+
+
+
+# before we begin to loop, speed up as much as possible
+
+# 1. strip unnecessary crap
+program=${program//[!-[\]+.,><]}
+
+# 2. explode the string into an array
+i=-1
+while (( i++ < ${#program} )); do
+  code+=("${program:i:1}")
+done
+
+# 3. precompute the jumps
+bracecount=0 i=-1
+while (( i++ < ${#program} )); do
+  case ${code[i]} in
+   '[') (( bracecount ++ )) ;;
+   ']') (( bracecount -- )) ;;
+  esac
+done
+
+if (( bracecount > 0 )); then
+  echo "Missing ]" >&2
+  exit 1
+elif (( bracecount < 0 )); then
+  echo "Missing [" >&2
+  exit 1
+fi
+
+# TODO: merge this in the previous loop
+i=-1
+while (( i++ < ${#program} )); do
+
+  if [[ ${code[i]} = '[' ]]; then
+    bracecount=1 j=i 
+
+    # this loop always finds the match
+    while (( j++ < ${#program} && bracecount > 0 )); do
+      case ${code[j]} in
+        '[') (( bracecount ++ )) ;;
+        ']') (( bracecount -- )) ;;
+      esac
+    done
+
+    jump[i]=j-1
+
+  elif [[ ${code[i]} = ']' ]]; then
+    bracecount=-1 j=i
+
+    while (( j-- >= 0 && bracecount < 0 )); do
+      case ${code[j]} in
+        '[') (( bracecount ++ )) ;;
+        ']') (( bracecount -- )) ;;
+      esac
+    done
+
+    jump[i]=j
+
+  fi
+done
+
+
+
+
+
+i=-1
 while (( i++ < ${#program} )); do
 
   debug 
 
-  case ${program:i:1} in
+  case ${code[i]} in
 
     +) if (( cell >= 0 )); then
          (( pos_tape[cell] ++ ))
@@ -93,8 +162,8 @@ while (( i++ < ${#program} )); do
        fi
        ;;
 
-   \>) (( cell ++ )) ;;
-   \<) (( cell -- )) ;;
+  '>') (( cell ++ )) ;;
+  '<') (( cell -- )) ;;
 
     .) if (( cell >= 0 )); then
          if (( pos_tape[cell] >= 0 )); then
@@ -113,7 +182,7 @@ while (( i++ < ${#program} )); do
        ;;
 
     ,) read -r -n1 -d '' input
-       # technically this is binary safe, but EOF = 0
+       # technically this read is binary safe, but EOF = 0
        if (( cell >= 0 )); then
          printf -v "pos_tape[cell]" %d "'$input"
        else
@@ -121,60 +190,27 @@ while (( i++ < ${#program} )); do
        fi
        ;;
 
-   \[) # find the closing ]
-       # if it's missing, error out and quit
-       bracecount=1 j=i
-       while (( j++ < ${#program} && bracecount > 0 )); do
-         case ${program:j:1} in
-          \[) (( bracecount ++ )) ;;
-          \]) (( bracecount -- )) ;;
-         esac
-       done
-
-       if (( bracecount == 0 )); then
-         # we found the closing ]
-         if (( cell >= 0 )); then
-           if (( pos_tape[cell] ${INTEGERCELLS-% 256} == 0 )); then
-             # jump
-             i=j-1
-           else
-             loop+=(i)
-           fi
-         else
-           if (( neg_tape[-cell] ${INTEGERCELLS-% 256} == 0 )); then
-             i=j-1
-           else
-             loop+=(i)
-           fi
+  '[') if (( cell >= 0 )); then
+         if (( pos_tape[cell] ${INTEGERCELLS-% 256} == 0 )); then
+           # jump forward
+           i=jump[i]
          fi
        else
-         echo "Runtime error" >&2
-         DEBUG= debug
-         exit 1
+         if (( neg_tape[-cell] ${INTEGERCELLS-% 256} == 0 )); then
+           i=jump[i]
+         fi
        fi
        ;;
        
-   \]) # go back to the previous [
-       # if it's missing, error out and quit
-       if (( ${#loop[@]} )); then
-         if (( cell >= 0 )); then
-           if (( pos_tape[cell] ${INTEGERCELLS-% 256} != 0 )); then
-             # jump back
-             i=loop[-1]
-           else
-             unset "loop[-1]"
-           fi
-         else
-           if (( neg_tape[-cell] ${INTEGERCELLS-% 256} != 0 )); then
-             i=loop[-1]
-           else
-             unset "loop[-1]"
-           fi
+  ']') if (( cell >= 0 )); then
+         if (( pos_tape[cell] ${INTEGERCELLS-% 256} != 0 )); then
+           # jump back
+           i=jump[i]
          fi
        else
-         echo "Runtime error" >&2
-         DEBUG= debug
-         exit 1
+         if (( neg_tape[-cell] ${INTEGERCELLS-% 256} != 0 )); then
+           i=jump[i]
+         fi
        fi
 
   esac
