@@ -18,7 +18,25 @@ And TADA!... now I know brainfuck
 
 
 
+## OPTIMIZATIONS ##
 
-Beware: it's *SLOOOOOOOOOOOOW* (but it works)
+It turns out that bash is slow...  (surprise!)
 
-Note: much much faster than the first naïve version
+My first naïve version could run rot13 at a rate of 5s per letter...
+That was horrifiying :(
+
+Now the interpreter merges together multiple increments/decrements of the value
+and the pointer.
+
+It also builds a list of all the jumps before actually running the code.  This
+was a major speedup.
+
+
+## USAGE ##
+
+  Usage: bf [-s] filename-of-your-bf-program
+         bf [-s] -c 'your-bf-code-here'"
+
+If the -s option is passed:
+  - the debug features are completely disabled
+  - the tape is one-sided (trying to get/set values of negative cells simply fails)

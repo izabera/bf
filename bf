@@ -14,7 +14,7 @@
 # probably works in older versions too but i don't really care
 
 
-# usage: bf filename-of-your-bf-program
+# Usage: bf filename-of-your-bf-program
 #        bf -c 'your-bf-code-here'
 
 
@@ -41,14 +41,20 @@ LANG=C IFS=
 
 usage () {
   echo "\
-  usage: bf filename-of-your-bf-program
-         bf -c 'your-bf-code-here'"
+  Usage: bf [-s] filename-of-your-bf-program
+         bf [-s] -c 'your-bf-code-here'"
 }
 
-while getopts :hc: opt; do
+shopt -s expand_aliases
+# hack to completely remove the code
+# the aliases are expanded only once
+alias _=
+
+while getopts :hsc: opt; do
   case $opt in
     h) usage; exit ;;
     c) program=$OPTARG ;;
+    s) alias debug= _=# ;;
     :) echo "Missing argument for option -$OPTARG" >&2
        usage >&2; exit 1 ;;
     *) echo "Unknown option -$OPTARG" >&2
@@ -81,13 +87,28 @@ fi
 
 # 1. strip unnecessary crap
 program=${program//[!-[\]+.,><]}
-len=${#program}
 
 # 2. explode the string into an array
-i=-1
-while (( i++ < len )); do
-  code+=("${program:i:1}")
+# try to optimize the bf code:
+# keep +/-/>/< tokens together and append the number of times
+i=-1 count=1
+while (( i++ <= ${#program} )); do
+  # up to <= so that the last one expands to empty
+
+  if [[ ${#code[@]} -gt 0 && ${code[-1]} = @(+|-|<|>) ]]; then
+    if [[ ${code[-1]} != "${program:i:1}" ]]; then
+      code[-1]+=$count
+      code+=("${program:i:1}")
+      count=1
+    else
+      (( count++ ))
+    fi
+  else
+    code+=("${program:i:1}")
+  fi
+
 done
+len=${#code[@]}
 
 # 3. precompute the jumps
 bracecount=0 i=-1
@@ -149,70 +170,70 @@ while (( i++ < len )); do
 
   case ${code[i]} in
 
-    +) if (( cell >= 0 )); then
-         (( pos_tape[cell] ++ ))
-       else
-         (( neg_tape[-cell] ++ ))
-       fi
+   +*) _ if (( cell >= 0 )); then
+           (( pos_tape[cell] += ${code[i]#?} ))
+       _ else
+       _   (( neg_tape[-cell] += ${code[i]#?} ))
+       _ fi
        ;;
 
-    -) if (( cell >= 0 )); then
-         (( pos_tape[cell] -- ))
-       else
-         (( neg_tape[-cell] -- ))
-       fi
+   -*) _ if (( cell >= 0 )); then
+           (( pos_tape[cell] -= ${code[i]#?} ))
+       _ else
+       _   (( neg_tape[-cell] -= ${code[i]#?} ))
+       _ fi
        ;;
 
-  '>') (( cell ++ )) ;;
-  '<') (( cell -- )) ;;
+ '>'*) (( cell += ${code[i]#?} )) ;;
+ '<'*) (( cell -= ${code[i]#?} )) ;;
 
-    .) if (( cell >= 0 )); then
-         if (( pos_tape[cell] >= 0 )); then
-           printf -v output %o "$(( pos_tape[cell] % 256 ))"
-         else
-           printf -v output %o "$(( -(-pos_tape[cell] % 256) ))"
-         fi
-       else
-         if (( neg_tape[-cell] >= 0 )); then
-           printf -v output %o "$(( neg_tape[-cell] % 256 ))"
-         else
-           printf -v output %o "$(( -(-neg_tape[-cell] % 256) ))"
-         fi
-       fi
+    .) _ if (( cell >= 0 )); then
+           if (( pos_tape[cell] >= 0 )); then
+             printf -v output %o "$(( pos_tape[cell] % 256 ))"
+           else
+             printf -v output %o "$(( -(-pos_tape[cell] % 256) ))"
+           fi
+       _ else
+       _   if (( neg_tape[-cell] >= 0 )); then
+       _     printf -v output %o "$(( neg_tape[-cell] % 256 ))"
+       _   else
+       _     printf -v output %o "$(( -(-neg_tape[-cell] % 256) ))"
+       _   fi
+       _ fi
        printf "\\$output"
        ;;
 
     ,) read -r -n1 -d '' input
        # technically this read is binary safe, but EOF = 0
-       if (( cell >= 0 )); then
-         printf -v "pos_tape[cell]" %d "'$input"
-       else
-         printf -v "neg_tape[-cell]" %d "'$input"
-       fi
+       _ if (( cell >= 0 )); then
+           printf -v "pos_tape[cell]" %d "'$input"
+       _ else
+       _   printf -v "neg_tape[-cell]" %d "'$input"
+       _ fi
        ;;
 
-  '[') if (( cell >= 0 )); then
-         if (( pos_tape[cell] ${INTEGERCELLS-% 256} == 0 )); then
-           # jump forward
-           i=jump[i]
-         fi
-       else
-         if (( neg_tape[-cell] ${INTEGERCELLS-% 256} == 0 )); then
-           i=jump[i]
-         fi
-       fi
+  '[') _ if (( cell >= 0 )); then
+           if (( pos_tape[cell] ${INTEGERCELLS-% 256} == 0 )); then
+             # jump forward
+             i=jump[i]
+           fi
+       _ else
+       _   if (( neg_tape[-cell] ${INTEGERCELLS-% 256} == 0 )); then
+       _     i=jump[i]
+       _   fi
+       _ fi
        ;;
        
-  ']') if (( cell >= 0 )); then
-         if (( pos_tape[cell] ${INTEGERCELLS-% 256} != 0 )); then
-           # jump back
-           i=jump[i]
-         fi
-       else
-         if (( neg_tape[-cell] ${INTEGERCELLS-% 256} != 0 )); then
-           i=jump[i]
-         fi
-       fi
+  ']') _ if (( cell >= 0 )); then
+           if (( pos_tape[cell] ${INTEGERCELLS-% 256} != 0 )); then
+             # jump back
+             i=jump[i]
+           fi
+       _ else
+       _   if (( neg_tape[-cell] ${INTEGERCELLS-% 256} != 0 )); then
+       _     i=jump[i]
+       _   fi
+       _ fi
 
   esac
 
