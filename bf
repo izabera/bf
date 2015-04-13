@@ -3,8 +3,7 @@
 # brainfuck interpreter
 
 # EOF = 0
-# 2**63-1 cells
-# trying to write to a cell in the left part of the tape causes a runtime error
+# 2**64-1 cells, both left and right of the starting position
 # 8-bit values in cells, unless the environment variable INTEGERCELLS is found
 # in which case it uses 64-bit integers
 
@@ -15,36 +14,63 @@
 # ok one could make it work even in bash2 but whatever
 
 
-# usage: ./bf filename-of-your-bf-program
+# usage: bf filename-of-your-bf-program
+#        bf -c 'your-bf-code-here'
 
 
 
 debug () {
   [[ ! -v DEBUG ]] && return
-  printf tape:
-  printf '<%s>' "${tape[@]}"
-  echo
-  printf loop:
+  printf '\npos_tape:'
+  printf '<%s>' "${pos_tape[@]}"
+  printf '\nneg_tape:'
+  printf '<%s>' "${neg_tape[@]}"
+  printf '\nloop:'
   printf '<%s>' "${loop[@]}"
-  echo
-  echo "cell=$cell i=$i j=$j code=${program:i:1} bracecount=$bracecount"
-  echo
+  printf '\ncell=%s i=%i j=%s code=%q bracecount=%s\n' "$cell" "$i" "$j" "${program:i:1}" "$bracecount"
 } >&2
 
-tape=()
-declare -i cell=0 i=-1 j=0 loop=()
+pos_tape=() neg_tape=()
+declare -i cell=0 i=-1 j=0 loop=() bracecount=0
 
 # set it to an empty value if it's set to avoid messing with the math expansion
 if [[ $INTEGERCELLS ]]; then INTEGERCELLS= ; fi
 
-if (( $# != 1 )); then
-  echo "usage: ./bf filename-of-your-bf-program" >&2
+# needed to read bytes correctly
+LANG=C IFS=
+
+usage () {
+  echo "\
+  usage: bf filename-of-your-bf-program
+         bf -c 'your-bf-code-here'"
+}
+
+while getopts :hc: opt; do
+  case $opt in
+    h) usage; exit ;;
+    c) program=$OPTARG ;;
+    :) echo "Missing argument for option -$OPTARG" >&2
+       usage >&2; exit 1 ;;
+    *) echo "Unknown option -$OPTARG" >&2
+       usage >&2; exit 1 ;;
+  esac
+done
+shift "$(( OPTIND - 1 ))"
+
+if (( $# > 1 )); then
+  echo "Too many arguments" >&2
+  usage >&2
   exit 1
-elif [[ -r $1 ]]; then
-  read -r -N 0 program < "$1"
-else
-  echo "Couldn't read \`$1'" >&2
-  exit 1
+elif [[ ! -v program ]]; then
+  if (( $# == 0 )); then
+    usage >&2
+    exit 1
+  elif [[ -r $1 ]]; then
+    read -r -N 0 program < "$1"
+  else
+    echo "Couldn't read \`$1'" >&2
+    exit 1
+  fi
 fi
 
 while (( i++ < ${#program} )); do
@@ -54,32 +80,46 @@ while (( i++ < ${#program} )); do
   case ${program:i:1} in
 
     +) if (( cell >= 0 )); then
-         (( tape[cell] ++ ))
+         (( pos_tape[cell] ++ ))
        else
-         echo "Runtime error: x" >&2
-         debug= debug
-         exit 1
+         (( neg_tape[-cell] ++ ))
        fi
        ;;
 
     -) if (( cell >= 0 )); then
-         (( tape[cell] -- ))
+         (( pos_tape[cell] -- ))
        else
-         echo "Runtime error" >&2
-         debug= debug
-         exit 1
+         (( neg_tape[-cell] -- ))
        fi
        ;;
 
    \>) (( cell ++ )) ;;
    \<) (( cell -- )) ;;
 
-    .) printf -v output %o "$(( tape[cell] ${INTEGERCELLS-+ 256 % 256} ))"
-       printf "\\$output" ;;
+    .) if (( cell >= 0 )); then
+         if (( pos_tape[cell] >= 0 )); then
+           printf -v output %o "$(( pos_tape[cell] % 256 ))"
+         else
+           printf -v output %o "$(( -(-pos_tape[cell] % 256) ))"
+         fi
+       else
+         if (( neg_tape[-cell] >= 0 )); then
+           printf -v output %o "$(( neg_tape[-cell] % 256 ))"
+         else
+           printf -v output %o "$(( -(-neg_tape[-cell] % 256) ))"
+         fi
+       fi
+       printf "\\$output"
+       ;;
 
-    ,) IFS= read -r -n1 -d '' input
+    ,) read -r -n1 -d '' input
        # technically this is binary safe, but EOF = 0
-       printf -v "tape[cell]" %d "'$input" ;;
+       if (( cell >= 0 )); then
+         printf -v "pos_tape[cell]" %d "'$input"
+       else
+         printf -v "neg_tape[-cell]" %d "'$input"
+       fi
+       ;;
 
    \[) # find the closing ]
        # if it's missing, error out and quit
@@ -93,11 +133,19 @@ while (( i++ < ${#program} )); do
 
        if (( bracecount == 0 )); then
          # we found the closing ]
-         if (( tape[cell] ${INTEGERCELLS-+ 256 % 256} == 0 )); then
-           # jump
-           i=j-1
+         if (( cell >= 0 )); then
+           if (( pos_tape[cell] ${INTEGERCELLS-% 256} == 0 )); then
+             # jump
+             i=j-1
+           else
+             loop+=(i)
+           fi
          else
-           loop+=(i)
+           if (( neg_tape[-cell] ${INTEGERCELLS-% 256} == 0 )); then
+             i=j-1
+           else
+             loop+=(i)
+           fi
          fi
        else
          echo "Runtime error" >&2
@@ -109,11 +157,19 @@ while (( i++ < ${#program} )); do
    \]) # go back to the previous [
        # if it's missing, error out and quit
        if (( ${#loop[@]} )); then
-         if (( tape[cell] ${INTEGERCELLS-+ 256 % 256} != 0 )); then
-           # jump back
-           i=loop[-1]
+         if (( cell >= 0 )); then
+           if (( pos_tape[cell] ${INTEGERCELLS-% 256} != 0 )); then
+             # jump back
+             i=loop[-1]
+           else
+             unset "loop[-1]"
+           fi
          else
-           unset "loop[-1]"
+           if (( neg_tape[-cell] ${INTEGERCELLS-% 256} != 0 )); then
+             i=loop[-1]
+           else
+             unset "loop[-1]"
+           fi
          fi
        else
          echo "Runtime error" >&2
