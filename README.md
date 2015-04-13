@@ -39,4 +39,10 @@ was a major speedup.
 
 If the -s option is passed:
   - the debug features are completely disabled
-  - the tape is one-sided (trying to get/set values of negative cells simply fails)
+  - the tape is one-sided (trying to get/set values on the left side simply fails)
+
+
+## CONTRIBUTORS ##
+
+- elliott
+- gniourf

@@ -110,54 +110,29 @@ while (( i++ <= ${#program} )); do
 done
 len=${#code[@]}
 
-# 3. precompute the jumps
-bracecount=0 i=-1
-while (( i++ < len )); do
-  case ${code[i]} in
-   '[') (( bracecount ++ )) ;;
-   ']') (( bracecount -- )) ;;
-  esac
+# 3. precompute the jumps  (faster code made by gniourf!)
+open_brackets=()
+i=0
+for ((i=0;i<len;++i)); do
+   char=${code[i]}
+   code+=( "$char" )
+   case $char in
+      ('[') open_brackets=( "$i" "${open_brackets[@]}" ) ;;
+      (']')
+            if ((${#open_brackets[@]}==0)); then
+               printf >&2 'Missing [\n'
+               exit 1
+            fi
+            jump[i]=${open_brackets[0]}
+            jump[${open_brackets[0]}]=$i
+            open_brackets=( "${open_brackets[@]:1}" )
+            ;;
+   esac
 done
-
-if (( bracecount > 0 )); then
-  echo "Missing ]" >&2
-  exit 1
-elif (( bracecount < 0 )); then
-  echo "Missing [" >&2
-  exit 1
+if ((${#open_brackets[@]})); then
+   printf >&2 'Missing ]\n'
+   exit 1
 fi
-
-# TODO: merge this in the previous loop
-i=-1
-while (( i++ < len )); do
-
-  if [[ ${code[i]} = '[' ]]; then
-    bracecount=1 j=i 
-
-    # this loop always finds the match
-    while (( j++ < len && bracecount > 0 )); do
-      case ${code[j]} in
-        '[') (( bracecount ++ )) ;;
-        ']') (( bracecount -- )) ;;
-      esac
-    done
-
-    jump[i]=j-1
-
-  elif [[ ${code[i]} = ']' ]]; then
-    bracecount=-1 j=i
-
-    while (( j-- >= 0 && bracecount < 0 )); do
-      case ${code[j]} in
-        '[') (( bracecount ++ )) ;;
-        ']') (( bracecount -- )) ;;
-      esac
-    done
-
-    jump[i]=j+1
-
-  fi
-done
 
 
 
