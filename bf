@@ -1,215 +1,133 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# brainfuck interpreter
-
-# EOF = 0
-# 2**64-1 cells, both left and right of the starting position
-# 8-bit values in cells, unless the environment variable INTEGERCELLS is found
-# in which case it uses 64-bit integers
-
-# it prints debug informations if the environment variable DEBUG is found
-
-
-# tested in bash 4.3
-# probably works in older versions too but i don't really care
-
-
-# Usage: bf filename-of-your-bf-program
-#        bf -c 'your-bf-code-here'
-
-
-
-debug () {
-  [[ ! -v DEBUG ]] && return
-  printf '\npos_tape:'
-  printf '<%s>' "${pos_tape[@]}"
-  printf '\nneg_tape:'
-  printf '<%s>' "${neg_tape[@]}"
-  printf '\njump:'
-  printf '<%s>' "${jump[@]}"
-  printf '\ncell=%s i=%i code=%s\n' "$cell" "$i" "${code[i]}"
-} >&2
-
-pos_tape=() neg_tape=()
-declare -i cell=0 i j jump=() bracecount
-
-# set it to an empty value if it's set to avoid messing with the math expansion
-if [[ $INTEGERCELLS ]]; then INTEGERCELLS= ; fi
-
-# needed to read bytes correctly
 LANG=C IFS=
 
-usage () {
-  echo "\
-  Usage: bf [-s] filename-of-your-bf-program
-         bf [-s] -c 'your-bf-code-here'"
+getbyte () {
+  read -r -n1 -d "" input
+  printf -v "tape[i]" %d "'$input"
 }
 
+# note to self: extglobs literally kill performance
+compile() {
+  # bash's pe is just too slow for something like LostKng.b
+
+  #program=${program//[!-[\]+.,><]}
+  #program=${program//'[-]'/z}                                   # [-] and [+] are clear loops
+  #program=${program//'[+]'/z}                                   # convert them to z
+  #program_len=${#program}
+  
+  #while program=${program//+-}   program=${program//'<>'}       # remove pointless code
+        #program=${program//-+}   program=${program//'><'}
+        #program=${program//zz/z} program=${program#z}
+        #program=${program//[-+]z/z}
+    #(( ${#program} != program_len ))
+  #do program_len=${#program}; done
+
+  program=$(tr -dc "[]<>,.+-" <<< "$program")
+  program=$(sed ":while
+                        # pointless code
+  s/+-//g; s/-+//g; s/<>//g; s/><//g; s/[-+][-+]*z/z/g; s/zzz*/z/g; s/^zz*//
+  t while
+                        
+  s/\[[-+]]/z/g;        # z == zero this cell
+
+                        # then optimize a few common constructs
+
+  s/>>>>>>>>>\(z*\)<<<<<<<<</a9|\1|/g;    s/<<<<<<<<<\(z*\)>>>>>>>>>/b9|\1|/g
+   s/>>>>>>>>\(z*\)<<<<<<<</a8|\1|/g;      s/<<<<<<<<\(z*\)>>>>>>>>/b8|\1|/g
+    s/>>>>>>>\(z*\)<<<<<<</a7|\1|/g;        s/<<<<<<<\(z*\)>>>>>>>/b7|\1|/g
+     s/>>>>>>\(z*\)<<<<<</a6|\1|/g;          s/<<<<<<\(z*\)>>>>>>/b6|\1|/g
+      s/>>>>>\(z*\)<<<<</a5|\1|/g;            s/<<<<<\(z*\)>>>>>/b5|\1|/g
+       s/>>>>\(z*\)<<<</a4|\1|/g;              s/<<<<\(z*\)>>>>/b4|\1|/g
+        s/>>>\(z*\)<<</a3|\1|/g;                s/<<<\(z*\)>>>/b3|\1|/g
+         s/>>\(z*\)<</a2|\1|/g;                  s/<<\(z*\)>>/b2|\1|/g
+          s/>\(z*\)</a1|\1|/g;                    s/<\(z*\)>/b1|\1|/g
+  s/>>>>>>>>>\(+*\)<<<<<<<<</a9|\1|/g;    s/<<<<<<<<<\(+*\)>>>>>>>>>/b9|\1|/g
+   s/>>>>>>>>\(+*\)<<<<<<<</a8|\1|/g;      s/<<<<<<<<\(+*\)>>>>>>>>/b8|\1|/g
+    s/>>>>>>>\(+*\)<<<<<<</a7|\1|/g;        s/<<<<<<<\(+*\)>>>>>>>/b7|\1|/g
+     s/>>>>>>\(+*\)<<<<<</a6|\1|/g;          s/<<<<<<\(+*\)>>>>>>/b6|\1|/g
+      s/>>>>>\(+*\)<<<<</a5|\1|/g;            s/<<<<<\(+*\)>>>>>/b5|\1|/g
+       s/>>>>\(+*\)<<<</a4|\1|/g;              s/<<<<\(+*\)>>>>/b4|\1|/g
+        s/>>>\(+*\)<<</a3|\1|/g;                s/<<<\(+*\)>>>/b3|\1|/g
+         s/>>\(+*\)<</a2|\1|/g;                  s/<<\(+*\)>>/b2|\1|/g
+          s/>\(+*\)</a1|\1|/g;                    s/<\(+*\)>/b1|\1|/g
+  s/>>>>>>>>>\(-*\)<<<<<<<<</a9|\1|/g;    s/<<<<<<<<<\(-*\)>>>>>>>>>/b9|\1|/g
+   s/>>>>>>>>\(-*\)<<<<<<<</a8|\1|/g;      s/<<<<<<<<\(-*\)>>>>>>>>/b8|\1|/g
+    s/>>>>>>>\(-*\)<<<<<<</a7|\1|/g;        s/<<<<<<<\(-*\)>>>>>>>/b7|\1|/g
+     s/>>>>>>\(-*\)<<<<<</a6|\1|/g;          s/<<<<<<\(-*\)>>>>>>/b6|\1|/g
+      s/>>>>>\(-*\)<<<<</a5|\1|/g;            s/<<<<<\(-*\)>>>>>/b5|\1|/g
+       s/>>>>\(-*\)<<<</a4|\1|/g;              s/<<<<\(-*\)>>>>/b4|\1|/g
+        s/>>>\(-*\)<<</a3|\1|/g;                s/<<<\(-*\)>>>/b3|\1|/g
+         s/>>\(-*\)<</a2|\1|/g;                  s/<<\(-*\)>>/b2|\1|/g
+          s/>\(-*\)</a1|\1|/g;                    s/<\(-*\)>/b1|\1|/g
+  " <<< "$program")
+  program_len=${#program}
+
+
+  echo "go () { tape=() i=0"                                     # beginning of function
+
+  local -i i j tmp count
+  local ins
+  while (( i < program_len )); do
+    ins=${program:i:1}
+    case $ins in
+    +|-|">"|"<")                                                 # squeeze these
+      for (( count = 1; ++i < program_len; count ++ )); do
+        [[ ${program:i:1} = "$ins" ]] || break
+      done
+      case $ins in
+          -) echo "(( tape[i] = (tape[i] - $count) & 255 ))" ;;
+          +) echo "(( tape[i] = (tape[i] + $count) & 255 ))" ;;
+        ">") echo "(( i += $count ))" ;;
+        "<") echo "(( i -= $count ))" ;;
+      esac
+      ;;
+    .) echo 'printf -v tmp %o "${tape[i]}"; printf %b "\\$tmp"'; (( i ++ )) ;;
+    ,) echo getbyte ; (( i ++ )) ;;
+    "[") echo "while (( tape[i] != 0 )); do :;"; (( i ++ )) ;;   # :; because of []
+    "]") echo done; (( i ++ )) ;;
+    a|b) count=${program:(++i):1} op=${program:(++i,++i):1}
+         for (( incrcount = 1; ++i < program_len; incrcount ++ )); do
+           [[ ${program:i:1} = [z+-] ]] || break
+         done
+         (( i++ ))                                               # skip the | separator
+         if [[ $op = z ]]; then
+           case $ins in
+             a) echo "(( tape[i+$count] = 0 ))" ;;
+             b) echo "(( tape[i-$count] = 0 ))" ;;
+           esac
+         else
+           case $ins in
+             a) echo "(( tape[i+$count] $op= $incrcount ))" ;;
+             b) echo "(( tape[i-$count] $op= $incrcount ))" ;;
+           esac
+         fi
+         ;;
+    z) for (( count = 0; ++i < program_len; count ++ )); do      # optimize [-]++++
+         [[ ${program:i:1} = [+-] ]] || break
+       done
+       echo "tape[i]=$count" ;;
+    esac
+  done
+  echo }                                                         # end of function
+}
+
+case $# in
+  1) program=$(< "$1") ;;
+  2) [[ $1 = -c ]] || exit 1
+     program=$2 ;;
+  *) exit 1
+esac
+
+[[ -v TIMES ]] || alias time=                                    # TIMES= ./bf myprogram.b
 shopt -s expand_aliases
-# hack to completely remove the code
-# the aliases are expanded only once
-alias _=
+TIMEFORMAT="compilation time: real: %lR, user: %lU, sys: %lS"
+time compiled=$(compile)
+shopt -u expand_aliases
 
-while getopts :hsc: opt; do
-  case $opt in
-    h) usage; exit ;;
-    c) program=$OPTARG ;;
-    s) alias debug= _=# ;;
-    :) echo "Missing argument for option -$OPTARG" >&2
-       usage >&2; exit 1 ;;
-    *) echo "Unknown option -$OPTARG" >&2
-       usage >&2; exit 1 ;;
-  esac
-done
-shift "$(( OPTIND - 1 ))"
+eval "$compiled" || exit 1                                       # create that function
 
-if (( $# > 1 )); then
-  echo "Too many arguments" >&2
-  usage >&2
-  exit 1
-elif [[ ! -v program ]]; then
-  if (( $# == 0 )); then
-    usage >&2
-    exit 1
-  elif [[ -r $1 ]]; then
-    program=$(< "$1")
-  else
-    echo "Couldn't read \`$1'" >&2
-    exit 1
-  fi
-fi
-
-
-
-
-
-# before we begin to loop, speed up as much as possible
-
-# 1. strip unnecessary crap
-program=${program//[!-[\]+.,><]}
-
-# 2. explode the string into an array
-# try to optimize the bf code:
-# keep +/-/>/< tokens together and append the number of times
-i=-1 count=1
-while (( i++ <= ${#program} )); do
-  # up to <= so that the last one expands to empty
-
-  if [[ ${#code[@]} -gt 0 && ${code[-1]} = @(+|-|<|>) ]]; then
-    if [[ ${code[-1]} != "${program:i:1}" ]]; then
-      code[-1]+=$count
-      code+=("${program:i:1}")
-      count=1
-    else
-      (( count++ ))
-    fi
-  else
-    code+=("${program:i:1}")
-  fi
-
-done
-len=${#code[@]}
-
-# 3. precompute the jumps  (faster code made by gniourf!)
-open_brackets=()
-i=0
-for ((i=0;i<len;++i)); do
-   char=${code[i]}
-   code+=( "$char" )
-   case $char in
-      ('[') open_brackets=( "$i" "${open_brackets[@]}" ) ;;
-      (']')
-            if ((${#open_brackets[@]}==0)); then
-               printf >&2 'Missing [\n'
-               exit 1
-            fi
-            jump[i]=${open_brackets[0]}
-            jump[${open_brackets[0]}]=$i
-            open_brackets=( "${open_brackets[@]:1}" )
-            ;;
-   esac
-done
-if ((${#open_brackets[@]})); then
-   printf >&2 'Missing ]\n'
-   exit 1
-fi
-
-
-
-
-
-i=-1
-while (( i++ < len )); do
-
-  debug 
-
-  case ${code[i]} in
-
-   +*) _ if (( cell >= 0 )); then
-           (( pos_tape[cell] += ${code[i]#?} ))
-       _ else
-       _   (( neg_tape[-cell] += ${code[i]#?} ))
-       _ fi
-       ;;
-
-   -*) _ if (( cell >= 0 )); then
-           (( pos_tape[cell] -= ${code[i]#?} ))
-       _ else
-       _   (( neg_tape[-cell] -= ${code[i]#?} ))
-       _ fi
-       ;;
-
- '>'*) (( cell += ${code[i]#?} )) ;;
- '<'*) (( cell -= ${code[i]#?} )) ;;
-
-    .) _ if (( cell >= 0 )); then
-           if (( pos_tape[cell] >= 0 )); then
-             printf -v output %o "$(( pos_tape[cell] % 256 ))"
-           else
-             printf -v output %o "$(( -(-pos_tape[cell] % 256) ))"
-           fi
-       _ else
-       _   if (( neg_tape[-cell] >= 0 )); then
-       _     printf -v output %o "$(( neg_tape[-cell] % 256 ))"
-       _   else
-       _     printf -v output %o "$(( -(-neg_tape[-cell] % 256) ))"
-       _   fi
-       _ fi
-       printf "\\$output"
-       ;;
-
-    ,) read -r -n1 -d '' input
-       # technically this read is binary safe, but EOF = 0
-       _ if (( cell >= 0 )); then
-           printf -v "pos_tape[cell]" %d "'$input"
-       _ else
-       _   printf -v "neg_tape[-cell]" %d "'$input"
-       _ fi
-       ;;
-
-  '[') _ if (( cell >= 0 )); then
-           if (( pos_tape[cell] ${INTEGERCELLS-% 256} == 0 )); then
-             # jump forward
-             i=jump[i]
-           fi
-       _ else
-       _   if (( neg_tape[-cell] ${INTEGERCELLS-% 256} == 0 )); then
-       _     i=jump[i]
-       _   fi
-       _ fi
-       ;;
-       
-  ']') _ if (( cell >= 0 )); then
-           if (( pos_tape[cell] ${INTEGERCELLS-% 256} != 0 )); then
-             # jump back
-             i=jump[i]
-           fi
-       _ else
-       _   if (( neg_tape[-cell] ${INTEGERCELLS-% 256} != 0 )); then
-       _     i=jump[i]
-       _   fi
-       _ fi
-
-  esac
-
-done
+shopt -s expand_aliases
+#declare -f go; exit     # pretty printing
+TIMEFORMAT=$'\nexecution time: real: %lR, user: %lU, sys: %lS'
+time go
