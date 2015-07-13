@@ -17,19 +17,21 @@ A brainfuck interpreter (now a jit compiler to bash) written in bash
 - Multiple increments/decrements of value and pointer are merged together
 - Clear loops (`[-]` and `[+]`), possibly followed by increments/decrements, are reduced
 - Shifted increments/decrements (`>>>>++<<<<`, `<<----->>`...) are reduced to a single instruction
+- Loops that multiply a single cell are reduced to two instructions
 
 Optimizing scan loops (`[>]` and `[<]`) doesn't make sense in bash
 
 ## TODO ##
 
-- Multiplication loops
+- Multiplication loops done properly
+- Precompute tape
 - moar
 
 
 ## USAGE ##
 
-  Usage: bf filename-of-your-bf-program
-         bf -c 'your-bf-code-here'"
+- `bf filename-of-your-bf-program`
+- `bf -c 'your-bf-code-here'`
 
 
 ## CONTRIBUTORS ##

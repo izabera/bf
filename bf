@@ -7,7 +7,7 @@ getbyte () {
   printf -v "tape[i]" %d "'$input"
 }
 putbyte () {
-  printf -v tmp %o "${tape[i]}"
+  printf -v tmp %o "$(( ${tape[i]} & 255 ))"
   printf %b "\\$tmp"
 }
 
@@ -217,6 +217,25 @@ compile() {
     .) echo putbyte; (( i ++ )) ;;
     ,) echo getbyte ; (( i ++ )) ;;
     "[")
+      # special case for small loops that are very common until the next part is done
+      loop=${program:i+1} loop=${loop%%"]"*}
+      if [[ $loop =~ ^([+-])([ab])([1-9])"|"([^|]*)"|"()$ ||
+            $loop =~ ^()([ab])([1-9])"|"([^|]*)"|"([+-])$ ]]; then
+
+        # [->--<]  ==  [+>++<]        [->++<]  ==  [+>--<]
+        op=${BASH_REMATCH[4]}
+        if [[ ${BASH_REMATCH[1]}${BASH_REMATCH[5]} = + ]]; then
+          [[ $op = +* ]] && op=- || op=+
+        else
+          op=${op:0:1}
+        fi
+        [[ ${BASH_REMATCH[2]} = a ]] && dire=+ || dire=-
+
+        echo "(( tape[i$dire${BASH_REMATCH[3]}] = (tape[i$dire${BASH_REMATCH[3]}] $op tape[i] * ${#BASH_REMATCH[4]}) & 255, tape[i] = 0 ))"
+        (( i += ${#loop} + 1 ))
+      else
+        echo "while (( tape[i] != 0 )); do"
+      fi
       # todo
     #"[") j=i ok=1 incr=0
          #while (( j++ < program_len )); do                       # detect simple loops
@@ -269,7 +288,7 @@ compile() {
              #esac
            #done
          #else
-           echo "while (( tape[i] != 0 )); do"
+           #echo "while (( tape[i] != 0 )); do"
          #fi
          [[ ${program:(++i):1} = "]" ]] && echo ":;" ;;          # syntax error without this
     "]") echo done; (( i ++ ))
@@ -322,6 +341,7 @@ eval "$compiled" || exit 1                                       # create that f
 
 shopt -s expand_aliases
 prettyprint () {
+  echo LANG=C
   [[ $compiled = *getbyte* ]] && declare -f getbyte
   [[ $compiled = *putbyte* ]] && declare -f putbyte
   declare -f go | sed 1d
