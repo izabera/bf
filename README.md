@@ -17,13 +17,13 @@ A brainfuck interpreter (a jit compiler to bash) written in bash
 - Multiple increments/decrements of value and pointer are merged together
 - Clear loops (`[-]` and `[+]`), possibly followed by increments/decrements, are reduced
 - Shifted increments/decrements (`>>>>++<<<<`, `<<----->>`...) are reduced to a single instruction
-- Loops that multiply a single cell are reduced to two instructions
+- Multiplication loops (`[->+>++>+++<<<]`) are reduced to a single instruction (unless they clear a cell, in which case they're converted into an if + that instruction)
 
 Optimizing scan loops (`[>]` and `[<]`) doesn't make sense in bash
 
 ## TODO ##
 
-- Multiplication loops done properly
+- Nested loops
 - Precompute tape
 - moar
 
@@ -38,7 +38,7 @@ bf -c 'your-bf-code-here'
 
 ## BUGS ##
 
-It's extremely slow compared to anything that compiles to c or to assembly.
+It's extremely slow compared to anything that compiles to C or to assembly.
 
 That said, it's probably faster than many interpreters written in "faster" languages.
 
