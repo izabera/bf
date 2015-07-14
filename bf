@@ -7,7 +7,7 @@ getbyte () {
   printf -v "tape[i]" %d "'$input"
 }
 putbyte () {
-  printf -v tmp %o "$(( ${tape[i]} & 255 ))"
+  printf -v tmp %o "$(( tape[i] & 255 ))"
   printf %b "\\$tmp"
 }
 
@@ -128,6 +128,7 @@ compile() {
   local ins
 
   echo "go () { tape=() i=0"                                     # beginning of function
+  #echo "go () { tape=(0{,,,,}{,,,,}{,,,,}{,,,,}{,,,,}{,,,}{,,,}{,}) i=0"
 
   # deadcode elimination may take a lot for long programs
   if [[ -v DEADCODE ]]; then
@@ -215,7 +216,7 @@ compile() {
       esac
       ;;
     .) echo putbyte; (( i ++ )) ;;
-    ,) echo getbyte ; (( i ++ )) ;;
+    ,) echo getbyte; (( i ++ )) ;;
     "[")
       # special case for small loops that are very common until the next part is done
       loop=${program:i+1} loop=${loop%%"]"*}
@@ -236,60 +237,129 @@ compile() {
       else
         echo "while (( tape[i] != 0 )); do"
       fi
-      # todo
-    #"[") j=i ok=1 incr=0
-         #while (( j++ < program_len )); do                       # detect simple loops
-           #case ${program:j:1} in
-             #+) (( ptr == 0 )) && (( incr ++ )) ;;
-             #-) (( ptr == 0 )) && (( incr -- )) ;;
-             #">") (( ptr ++ )) ;;
-             #"<") (( ptr -- )) ;;
-             #z) (( ptr == 0 )) && incr=0 ;;
-             #a|b) count=${program:(++j):1} op=${program:(++j,++j):1}
-                  #for (( incrcount = 1; ++j < program_len; incrcount ++ )); do
-                    #[[ ${program:j:1} = [z+-] ]] || break
-                  #done
-                  #(( j++ ))
-                  #if (( ptr + count == 0 )); then
-                    #case $op in
-                      #+) (( incr += count )) ;;
-                      #-) (( incr -= count )) ;;
-                      #z) incr=0 ;;
-                    #esac
-                  #fi
-                  #;;
-             #"]") break ;;
-             #*) ok=0; break ;;
-           #esac
-         #done
-         #if (( ok )); then                                       # it's a simple loop, interpret it
-           #while (( i++ < program_len )); do
-             #case ${program:i:1} in
-               #+) (( ptr == 0 )) && (( incr ++ )) ;;
-               #-) (( ptr == 0 )) && (( incr -- )) ;;
-               #">") (( ptr ++ )) ;;
-               #"<") (( ptr -- )) ;;
-               #z) (( ptr == 0 )) && incr=0 ;;
-               #a|b) count=${program:(++j):1} op=${program:(++j,++j):1}
-                    #for (( incrcount = 1; ++j < program_len; incrcount ++ )); do
-                      #[[ ${program:j:1} = [z+-] ]] || break
-                    #done
-                    #(( j++ ))
-                    #if (( ptr + count == 0 )); then
-                      #case $op in
-                        #+) (( incr += count )) ;;
-                        #-) (( incr -= count )) ;;
-                        #z) incr=0 ;;
-                      #esac
-                    #fi
-                    #;;
-               #"]") break ;;
-               #*) ok=0; break ;;
-             #esac
-           #done
-         #else
-           #echo "while (( tape[i] != 0 )); do"
-         #fi
+
+
+      #if [[ $loop = *[",.["]* ]]; then
+        #echo "while (( tape[i] != 0 )); do"
+      #else
+        #left=${loop//[!<]} right=${loop//[!>]}
+        #if (( ${#left} != ${#right} )); then
+          #echo "while (( tape[i] != 0 )); do"
+        #else
+          #min=0 loop_len=${#loop} tape_pos=0                     # 2 steps because array[-1]
+          #for (( loop_i = 0; loop_i < loop_len; loop_i++)); do
+            #case ${loop:loop_i:1} in
+              #"<") (( min = -- tape_pos < min ? tape_pos : min )); ;;
+              #">") (( tape_pos ++ )) ;;
+              #b) (( min = tape_pos - ${loop:loop_i+1:1} < min ? tape_pos - ${loop:loop_i+1:1} : min ))
+                                                                 ## any other character is skipped
+            #esac
+          #done
+          #starting_pos=${min#-} tape=([starting_pos]=0)
+          #tape_pos=$starting_pos if=0
+          #for (( loop_i = 0; loop_i < loop_len; loop_i++)); do   # mini interpreter
+                ##echo "{ 22loop: ${loop:loop_i}"
+                ##declare -p tape{,_pos} starting_pos
+                ##echo }
+            #case ${loop:loop_i:1} in
+              #"<") (( tape_pos -- )) ;;
+              #">") (( tape_pos ++ )) ;;
+              #+) (( tape[tape_pos] = (tape[tape_pos] + 1) & 255 )) ;;
+              #-) (( tape[tape_pos] = (tape[tape_pos] - 1) & 255 )) ;;
+              #z) tape[tape_pos]=0 ; (( tape_pos == starting_pos )) && if=1 ;;
+              #a|b) jump=${loop:loop_i+1:1}
+                ##echo "{ 32loop: ${loop:loop_i}"
+                ##declare -p tape{,_pos} starting_pos
+                ##echo }
+                 #[[ ${loop:loop_i:1} = a ]] && dire=+ || dire=-
+                 #(( tape_pos $dire= jump, loop_i += 3 ))         # now we're past |
+                ##echo "{ 37loop: ${loop:loop_i}"
+                ##declare -p tape{,_pos} starting_pos
+                ##echo }
+                 #while :; do
+                   #case ${loop:loop_i:1} in
+                     #+) (( tape[tape_pos] ++ )) ;;
+                     #-) (( tape[tape_pos] -- )) ;;
+                     #z) tape[tape_pos]=0 ; (( tape_pos == starting_pos )) && if=1 ;;
+                     #*) break
+                   #esac
+                   #(( loop_i ++ ))
+                 #done
+                 #[[ $dire = + ]] && (( tape_pos -= jump )) || (( tape_pos += jump ))
+                ##echo "{ 51loop: ${loop:loop_i}"
+                ##declare -p tape{,_pos} starting_pos
+                ##echo }
+                 #;;
+            #esac
+          #done
+                ##echo "{ 57loop: ${loop:loop_i}"
+                ##declare -p tape{,_pos} starting_pos
+                ##echo }
+          #strings=()
+          #case ${tape[starting_pos]} in                          # +/-1 == optimize it away
+            #1) for position in "${!tape[@]}"; do
+                 #(( tape[position] *= -1 ))                      # convert [+>--<] to [->++<]
+               #done ;&
+            #255) for position in "${!tape[@]}"; do
+                   #offset=$((position-starting_pos)) string=
+                   #case $offset in
+                     #0) continue ;;
+                     #[!-]*) offset=+$offset ;&
+                     #*) string="tape[i$offset] = " ;;
+                   #esac
+                   #if (( tape[position] == 0 )); then
+                     #string+=0
+                   #elif (( tape[position] > 0 )); then
+                     #string+="(tape[i$offset] + tape[i] * ${tape[position]}) & 255"
+                   #else
+                     #string+="(tape[i$offset] - tape[i] * ${tape[position]#-}) & 255"
+                   #fi
+                   #strings+=("$string")
+                 #done
+                 #printf "(( ${strings[0]//" * 1)"/)} "
+                 #for string in "${strings[@]:1}"; do
+                   #printf ", ${string//" * 1)"/)} "
+                 #done
+                 #echo ", tape[i] = 0 ))"
+                 #(( i += ${#loop} + 1 ))
+              #;;
+            #0) if (( if )); then
+                 #for position in "${!tape[@]}"; do
+                   #offset=$((position-starting_pos)) string=
+                   #case $offset in
+                     #0) continue ;;
+                     #[!-]*) offset=+$offset ;&
+                     #*) string="tape[i$offset] = " ;;
+                   #esac
+                   #if (( tape[position] == 0 )); then
+                     #string+=0
+                   #elif (( tape[position] > 0 )); then
+                     #string+="(tape[i$offset] + ${tape[position]}) & 255"
+                     ##declare -p loop string >&2
+                   #else
+                     #string+="(tape[i$offset] - ${tape[position]#-}) & 255"
+                   #fi
+                   #strings+=("$string")
+                 #done
+                 #echo "if (( tape[i] )); then"
+                 #printf "(( ${strings[0]//" * 1)"/)} "
+                 #for string in "${strings[@]:1}"; do
+                   #printf ", ${string//" * 1)"/)} "
+                 #done
+                 #echo ", tape[i] = 0 )); fi"
+               #fi
+               #(( i += ${#loop} + 1 ))
+               #;;
+            #*) echo "while (( tape[i] != 0 )); do"               # so much work for nothing
+          #esac
+        #fi
+      #fi
+
+
+
+
+
+
          [[ ${program:(++i):1} = "]" ]] && echo ":;" ;;          # syntax error without this
     "]") echo done; (( i ++ ))
        ;;
@@ -305,15 +375,15 @@ compile() {
            esac
          else
            case $ins in
-             a) echo "(( tape[i+$count] $op= $incrcount ))" ;;
-             b) echo "(( tape[i-$count] $op= $incrcount ))" ;;
+             a) echo "(( tape[i+$count] = (tape[i+$count] $op $incrcount) & 255 ))" ;;
+             b) echo "(( tape[i-$count] = (tape[i-$count] $op $incrcount) & 255 ))" ;;
            esac
          fi
          ;;
     z) for (( count = 0; ++i < program_len; count ++ )); do      # optimize [-]++++
          [[ ${program:i:1} = [+-] ]] || break
        done
-       echo "tape[i]=$count"
+       echo "tape[i]=$((count & 255))"
        ;;
     esac
   done
@@ -350,3 +420,4 @@ prettyprint () {
 _ prettyprint
 TIMEFORMAT=$'\nexecution time: real: %lR, user: %lU, sys: %lS'
 time go
+exit 0
