@@ -258,7 +258,9 @@ compile() {
                    esac
                    (( loop_i ++ ))
                  done
-                 [[ $dire = + ]] && (( tape_pos -= jump )) || (( tape_pos += jump ))
+                 if [[ $dire = + ]]; then (( tape_pos -= jump ))
+                 else (( tape_pos += jump ))
+                 fi
                  ;;
             esac
           done
@@ -372,7 +374,6 @@ shopt -u expand_aliases
 
 eval "$compiled" || exit 1                                       # create that function
 
-shopt -s expand_aliases
 prettyprint () {
   echo LANG=C
   [[ $compiled = *getbyte* ]] && declare -f getbyte
@@ -381,6 +382,7 @@ prettyprint () {
   exit
 }
 [[ -v PRINT ]] && prettyprint
+shopt -s expand_aliases
 TIMEFORMAT=$'\nexecution time: real: %lR, user: %lU, sys: %lS'
 time go
 exit 0
