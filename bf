@@ -222,11 +222,11 @@ compile() {
       loop=${program:i+1} loop=${loop%%"]"*}
 
       if [[ $loop = *[",.["]* ]]; then
-        echo "while (( tape[i] != 0 )); do"
+        echo "while (( tape[i] )); do"
       else
         left=${loop//[!<]} right=${loop//[!>]}
         if (( ${#left} != ${#right} )); then
-          echo "while (( tape[i] != 0 )); do"
+          echo "while (( tape[i] )); do"
         else
           min=0 loop_len=${#loop} tape_pos=0                     # 2 steps because array[-1]
           for (( loop_i = 0; loop_i < loop_len; loop_i++)); do
@@ -294,33 +294,40 @@ compile() {
                  (( if )) && echo fi
                  (( i += ${#loop} + 1 ))
               ;;
-            0) if (( if )); then
-                 for position in "${!tape[@]}"; do
-                   offset=$((position-starting_pos)) string=
-                   case $offset in
-                     0) continue ;;
-                     [!-]*) offset=+$offset ;&
-                     *) string="tape[i$offset] = " ;;
-                   esac
-                   if (( tape[position] == 0 )); then
-                     string+=0
-                   elif (( tape[position] > 0 )); then
-                     string+="(tape[i$offset] + ${tape[position]}) & 255"
-                   else
-                     string+="(tape[i$offset] - ${tape[position]#-}) & 255"
-                   fi
-                   strings+=("$string")
-                 done
+            0) for position in "${!tape[@]}"; do
+                 offset=$((position-starting_pos)) string=
+                 case $offset in
+                   0) continue ;;
+                   [!-]*) offset=+$offset ;&
+                   *) string="tape[i$offset] = " ;;
+                 esac
+                 if (( tape[position] == 0 )); then
+                   string+=0
+                 elif (( tape[position] > 0 )); then
+                   string+="(tape[i$offset] + ${tape[position]}) & 255"
+                 else
+                   string+="(tape[i$offset] - ${tape[position]#-}) & 255"
+                 fi
+                 strings+=("$string")
+               done
+               if (( if )); then
                  echo "if (( tape[i] )); then"
-                 printf "(( ${strings[0]//" * 1)"/)} "
-                 for string in "${strings[@]:1}"; do
-                   printf ", ${string//" * 1)"/)} "
-                 done
-                 echo ", tape[i] = 0 )); fi"
+               else
+                 echo "while (( tape[i] )); do"
                fi
-               (( i += ${#loop} + 1 ))
+               printf "(( ${strings[0]//" * 1)"/)} "
+               for string in "${strings[@]:1}"; do
+                 printf ", ${string//" * 1)"/)} "
+               done
+               if (( if )); then
+                 echo ", tape[i] = 0 )); fi"
+                 (( i += ${#loop} + 1 ))
+               else
+                 (( i += ${#loop} ))
+                 echo "))"
+               fi
                ;;
-            *) echo "while (( tape[i] != 0 )); do"               # so much work for nothing
+            *) echo "while (( tape[i] )); do"               # so much work for nothing
           esac
         fi
       fi
