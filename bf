@@ -3,8 +3,12 @@
 LANG=C IFS=
 
 getbyte () {
-  read -r -n1 -d "" input
-  printf -v "tape[i]" %d "'$input"
+  [[ -t 0 ]] && exec < <(cat)   # a much better experience
+  getbyte () {
+    read -r -n1 -d "" input
+    printf -v "tape[i]" %d "'$input"
+  }
+  getbyte
 }
 putbyte () {
   printf -v tmp %o "$(( tape[i] & 255 ))"
