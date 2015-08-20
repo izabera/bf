@@ -386,7 +386,7 @@ shopt -u expand_aliases
 eval "$compiled" || exit 1                                       # create that function
 
 prettyprint () {
-  echo LANG=C
+  echo LANG=C IFS=
   [[ $compiled = *getbyte* ]] && declare -f getbyte
   [[ $compiled = *putbyte* ]] && declare -f putbyte
   declare -f go | sed 1d
