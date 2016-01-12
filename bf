@@ -11,7 +11,7 @@ getbyte () {
   getbyte
 }
 putbyte () {
-  printf -v tmp %o "$(( tape[i] & 255 ))"
+  printf -v tmp %o "${tape[i]}"
   printf %b "\\$tmp"
 }
 
@@ -213,10 +213,10 @@ compile() {
         [[ ${program:i:1} = "$ins" ]] || break
       done
       case $ins in
-          -) echo "(( tape[i] = (tape[i] - $count) & 255 ))" ;;
-          +) echo "(( tape[i] = (tape[i] + $count) & 255 ))" ;;
-        ">") echo "(( i += $count ))" ;;
-        "<") echo "(( i -= $count ))" ;;
+          -) echo -n "(( tape[i] = (tape[i] - $count) & 255 ));" ;;
+          +) echo -n "(( tape[i] = (tape[i] + $count) & 255 ));" ;;
+        ">") echo -n "(( i += $count ));" ;;
+        "<") echo -n "(( i -= $count ));" ;;
       esac
       ;;
     .) echo putbyte; (( i ++ )) ;;
@@ -294,7 +294,7 @@ compile() {
                  for string in "${strings[@]:1}"; do
                    printf ", ${string//" * 1)"/)} "
                  done
-                 echo ", tape[i] = 0 ))"
+                 echo -n ", tape[i] = 0 ));"
                  (( if )) && echo fi
                  (( i += ${#loop} + 1 ))
               ;;
@@ -328,7 +328,7 @@ compile() {
                  (( i += ${#loop} + 1 ))
                else
                  (( i += ${#loop} ))
-                 echo "))"
+                 echo -n "));"
                fi
                ;;
             *) echo "while (( tape[i] )); do"               # so much work for nothing
@@ -347,20 +347,20 @@ compile() {
          (( i++ ))                                               # skip the | separator
          if [[ $op = z ]]; then
            case $ins in
-             a) echo "(( tape[i+$count] = 0 ))" ;;
-             b) echo "(( tape[i-$count] = 0 ))" ;;
+             a) echo -n "(( tape[i+$count] = 0 ));" ;;
+             b) echo -n "(( tape[i-$count] = 0 ));" ;;
            esac
          else
            case $ins in
-             a) echo "(( tape[i+$count] = (tape[i+$count] $op $incrcount) & 255 ))" ;;
-             b) echo "(( tape[i-$count] = (tape[i-$count] $op $incrcount) & 255 ))" ;;
+             a) echo -n "(( tape[i+$count] = (tape[i+$count] $op $incrcount) & 255 ));" ;;
+             b) echo -n "(( tape[i-$count] = (tape[i-$count] $op $incrcount) & 255 ));" ;;
            esac
          fi
          ;;
     z) for (( count = 0; ++i < program_len; count ++ )); do      # optimize [-]++++
          [[ ${program:i:1} = [+-] ]] || break
        done
-       echo "tape[i]=$((count & 255))"
+       echo -n "tape[i]=$((count & 255));"
        ;;
     esac
   done
@@ -380,7 +380,7 @@ esac
 
 shopt -s expand_aliases
 TIMEFORMAT="compilation time: real: %lR, user: %lU, sys: %lS"
-time compiled=$(compile)
+time compiled=$(compile | sed -e:a -e's/));((/,/g;s/));\(tape[^;]*\);/, \1 ));/g;ta')
 shopt -u expand_aliases
 
 eval "$compiled" || exit 1                                       # create that function
