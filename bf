@@ -11,7 +11,7 @@ getbyte () {
   getbyte
 }
 putbyte () {
-  printf -v tmp %o "${tape[i]}"
+  printf -v tmp %o "$(( tape[i] & 255 ))"
   printf %b "\\$tmp"
 }
 
@@ -131,7 +131,7 @@ compile() {
   local -i i j count
   local ins
 
-  echo "go () { tape=() i=0"                                     # beginning of function
+  printf "go () {\ntape=()\ni=0\n"                                     # beginning of function
   #echo "go () { tape=(0{,,,,}{,,,,}{,,,,}{,,,,}{,,,,}{,,,}{,,,}{,}) i=0"
 
   # deadcode elimination may take a lot for long programs
@@ -213,8 +213,8 @@ compile() {
         [[ ${program:i:1} = "$ins" ]] || break
       done
       case $ins in
-          -) echo -n "(( tape[i] = (tape[i] - $count) & 255 ));" ;;
-          +) echo -n "(( tape[i] = (tape[i] + $count) & 255 ));" ;;
+          -) echo -n "(( tape[i] -= $count ));" ;;
+          +) echo -n "(( tape[i] += $count ));" ;;
         ">") echo -n "(( i += $count ));" ;;
         "<") echo -n "(( i -= $count ));" ;;
       esac
@@ -226,11 +226,11 @@ compile() {
       loop=${program:i+1} loop=${loop%%"]"*}
 
       if [[ $loop = *[",.["]* ]]; then
-        echo "while (( tape[i] )); do"
+        echo "while (( tape[i] & 255 )); do"
       else
         left=${loop//[!<]} right=${loop//[!>]}
         if (( ${#left} != ${#right} )); then
-          echo "while (( tape[i] )); do"
+          echo "while (( tape[i] & 255 )); do"
         else
           min=0 loop_len=${#loop} tape_pos=0                     # 2 steps because array[-1]
           for (( loop_i = 0; loop_i < loop_len; loop_i++)); do
@@ -278,21 +278,21 @@ compile() {
                    case $offset in
                      0) continue ;;
                      [!-]*) offset=+$offset ;&
-                     *) string="tape[i$offset] = " ;;
+                     *) string="tape[i$offset] " ;;
                    esac
                    if (( tape[position] == 0 )); then
-                     string+=0
+                     string+="= 0"
                    elif (( tape[position] > 0 )); then
-                     string+="(tape[i$offset] + tape[i] * ${tape[position]}) & 255"
+                     string+="+= tape[i] * ${tape[position]} "
                    else
-                     string+="(tape[i$offset] - tape[i] * ${tape[position]#-}) & 255"
+                     string+="-= tape[i] * ${tape[position]#-} "
                    fi
                    strings+=("$string")
                  done
-                 (( if )) && echo "if (( tape[i] )); then"
-                 printf "(( ${strings[0]//" * 1)"/)} "
+                 (( if )) && echo "if (( tape[i] & 255 )); then"
+                 printf "(( ${strings[0]//" * 1 "} "
                  for string in "${strings[@]:1}"; do
-                   printf ", ${string//" * 1)"/)} "
+                   printf ", ${string//" * 1 "} "
                  done
                  echo -n ", tape[i] = 0 ));"
                  (( if )) && echo fi
@@ -303,25 +303,25 @@ compile() {
                  case $offset in
                    0) continue ;;
                    [!-]*) offset=+$offset ;&
-                   *) string="tape[i$offset] = " ;;
+                   *) string="tape[i$offset] " ;;
                  esac
                  if (( tape[position] == 0 )); then
-                   string+=0
+                   string+="= 0"
                  elif (( tape[position] > 0 )); then
-                   string+="(tape[i$offset] + ${tape[position]}) & 255"
+                   string+="+= ${tape[position]} "
                  else
-                   string+="(tape[i$offset] - ${tape[position]#-}) & 255"
+                   string+="-= ${tape[position]#-} "
                  fi
                  strings+=("$string")
                done
                if (( if )); then
-                 echo "if (( tape[i] )); then"
+                 echo "if (( tape[i] & 255 )); then"
                else
-                 echo "while (( tape[i] )); do"
+                 echo "while (( tape[i] & 255 )); do"
                fi
-               printf "(( ${strings[0]//" * 1)"/)} "
+               printf "(( ${strings[0]//" * 1 "} "
                for string in "${strings[@]:1}"; do
-                 printf ", ${string//" * 1)"/)} "
+                 printf ", ${string//" * 1 "} "
                done
                if (( if )); then
                  echo ", tape[i] = 0 )); fi"
@@ -331,7 +331,7 @@ compile() {
                  echo -n "));"
                fi
                ;;
-            *) echo "while (( tape[i] )); do"               # so much work for nothing
+            *) echo "while (( tape[i] & 255 )); do"               # so much work for nothing
           esac
         fi
       fi
@@ -352,8 +352,8 @@ compile() {
            esac
          else
            case $ins in
-             a) echo -n "(( tape[i+$count] = (tape[i+$count] $op $incrcount) & 255 ));" ;;
-             b) echo -n "(( tape[i-$count] = (tape[i-$count] $op $incrcount) & 255 ));" ;;
+             a) echo -n "(( tape[i+$count] $op= $incrcount ));" ;;
+             b) echo -n "(( tape[i-$count] $op= $incrcount ));" ;;
            esac
          fi
          ;;
@@ -380,7 +380,16 @@ esac
 
 shopt -s expand_aliases
 TIMEFORMAT="compilation time: real: %lR, user: %lU, sys: %lS"
-time compiled=$(compile | sed -e:a -e's/));((/,/g;s/));\(tape[^;]*\);/, \1 ));/g;ta')
+time compiled=$(compile |
+sed '
+s/  *//g
+:a
+s/));((/,/g
+s/));\(tape[^;]*\);/,\1));/g
+s/));:;/))/g
+ta
+')
+# yay fixing crap with sed
 shopt -u expand_aliases
 
 eval "$compiled" || exit 1                                       # create that function
