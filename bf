@@ -11,7 +11,7 @@ getbyte () {
   getbyte
 }
 putbyte () {
-  printf -v tmp %o "$(( tape[i] & 255 ))"
+  printf -v tmp %o "$((tape[i]&255))"
   printf %b "\\$tmp"
 }
 
@@ -74,7 +74,7 @@ compile() {
   program=$(sed "
   # pntlessX: pointless code
   :pntless1
-  s/+-//g; s/-+//g; s/<>//g; s/><//g; s/[-+][-+]*z/z/g; s/zzz*/z/g; s/^zz*//
+  s/+-//g; s/-+//g; s/<>//g; s/><//g; s/[-+][-+]*z/z/g; s/zzz*/z/g; s/^zz*//; s/[-+z],/,/g
   tpntless1
 
   s/\[[-+]]/z/g;        # z == zero this cell
@@ -121,7 +121,7 @@ compile() {
   # repeat pntless1, + extra check for something like a7||
   # clean junk generated in pntless3
   :pntless4
-  s/+-//g; s/-+//g; s/<>//g; s/><//g; s/[-+][-+]*z/z/g; s/zzz*/z/g; s/^zz*//
+  s/+-//g; s/-+//g; s/<>//g; s/><//g; s/[-+][-+]*z/z/g; s/zzz*/z/g; s/^zz*//; s/[-+z],/,/g
   s/\([ab][0-9]\)||//g
   tpntless4
 
@@ -295,7 +295,7 @@ compile() {
                    printf ", ${string//" * 1 "} "
                  done
                  echo -n ", tape[i] = 0 ));"
-                 (( if )) && echo fi
+                 (( if )) && echo -n "fi;"
                  (( i += ${#loop} + 1 ))
               ;;
             0) for position in "${!tape[@]}"; do
@@ -324,7 +324,7 @@ compile() {
                  printf ", ${string//" * 1 "} "
                done
                if (( if )); then
-                 echo ", tape[i] = 0 )); fi"
+                 echo -n ", tape[i] = 0 )); fi;"
                  (( i += ${#loop} + 1 ))
                else
                  (( i += ${#loop} ))
@@ -386,7 +386,7 @@ s/  *//g
 :a
 s/));((/,/g
 s/));\(tape[^;]*\);/,\1));/g
-s/));:;/))/g
+s/;:;/;/g
 ta
 ')
 # yay fixing crap with sed
