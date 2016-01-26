@@ -74,7 +74,7 @@ compile() {
   program=$(sed "
   # pntlessX: pointless code
   :pntless1
-  s/+-//g; s/-+//g; s/<>//g; s/><//g; s/[-+][-+]*z/z/g; s/zzz*/z/g; s/^zz*//; s/[-+z],/,/g
+  s/+-//g; s/-+//g; s/<>//g; s/><//g; s/[-+][-+]*z/z/g; s/zzz*/z/g; s/^zz*//; s/[-+z][-+z]*,/,/g
   tpntless1
 
   s/\[[-+]]/z/g;        # z == zero this cell
@@ -121,10 +121,11 @@ compile() {
   # repeat pntless1, + extra check for something like a7||
   # clean junk generated in pntless3
   :pntless4
-  s/+-//g; s/-+//g; s/<>//g; s/><//g; s/[-+][-+]*z/z/g; s/zzz*/z/g; s/^zz*//; s/[-+z],/,/g
+  s/+-//g; s/-+//g; s/<>//g; s/><//g; s/[-+][-+]*z/z/g; s/zzz*/z/g; s/^zz*//; s/[-+z][-+z]*,/,/g
   s/\([ab][0-9]\)||//g
   tpntless4
 
+  s/[^]<>.,[]*$//
   " <<< "$program")
   program_len=${#program}
 
