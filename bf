@@ -132,7 +132,7 @@ compile() {
   local -i i j count
   local ins
 
-  printf "go () {\ntape=()\ni=0\n"                                     # beginning of function
+  echo "go () {"                                     # beginning of function
   #echo "go () { tape=(0{,,,,}{,,,,}{,,,,}{,,,,}{,,,,}{,,,}{,,,}{,}) i=0"
 
   # deadcode elimination may take a lot for long programs
@@ -385,9 +385,15 @@ time compiled=$(compile |
 sed '
 s/  *//g
 :a
-s/));((/,/g
-s/));\(tape[^;]*\);/,\1));/g
-s/;:;/;/g
+s/));((/,/g                                                           # makes it faster
+s/));\(tape[^;]*\);/,\1));/g                                          # makes it faster
+s/;:;/;/g                                                             # makes it faster
+s/((,/((/                                                             # fix fuck up
+
+# aesthetics
+#s/i\([+-]\)=\([0-9]*\),tape\[i]\([+-]\{0,1\}=[0-9]*\)/tape[i\1=\2]\3/   # ???? causes some problem with bash??
+s/i+=1\([^0-9]\)/++i\1/g
+s/i-=1\([^0-9]\)/--i\1/g
 ta
 ')
 # yay fixing crap with sed
@@ -396,10 +402,39 @@ shopt -u expand_aliases
 eval "$compiled" || exit 1                                       # create that function
 
 prettyprint () {
-  echo LANG=C IFS=
-  [[ $compiled = *getbyte* ]] && declare -f getbyte
-  [[ $compiled = *putbyte* ]] && declare -f putbyte
-  declare -f go | sed 1d
+  if [[ -v EMITC ]]; then  # it's trivial so why not
+    declare -f go |
+    {
+      echo "#include <stdio.h>
+      int main() {
+      char tape[65536] = { 0 };
+      size_t i = 0;"
+
+      sed '1,2d
+           s/; do/{/
+           s/done;*/}/
+           s/; then/{/
+           s/fi;*/}/
+           s/^ *((//
+           s/));\{0,1\}$/;/
+           s/((/(/
+           s/))/)/
+           s/&255//
+           s/,/;/g
+           s/[+-]\{0,1\}=/ & /g
+           s/*/ * /g
+           s/putbyte/putchar(t[i]);/
+           s/getbyte/tape[i] = getchar();/
+           $d'
+      echo "return 0;}"
+    } | tr -s \; | astyle --style=java --remove-brackets
+
+  else
+    printf "#!/bin/bash\nLANG=C IFS= i=0 tape=()\n"
+    [[ $compiled = *getbyte* ]] && declare -f getbyte
+    [[ $compiled = *putbyte* ]] && declare -f putbyte
+    declare -f go | sed 1d
+  fi
   exit
 }
 [[ -v PRINT ]] && prettyprint
