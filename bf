@@ -6,12 +6,12 @@ getbyte () {
   [[ -t 0 ]] && exec < <(cat)   # a much better experience
   getbyte () {
     read -r -n1 -d "" input
-    printf -v "tape[i]" %d "'$input"
+    printf -v "t[i]" %d "'$input"
   }
   getbyte
 }
 putbyte () {
-  printf -v tmp %o "$((tape[i]&255))"
+  printf -v tmp %o "$((t[i]&255))"
   printf %b "\\$tmp"
 }
 
@@ -173,37 +173,53 @@ compile() {
   fi
 
   # todo
-  # this takes a lot in any case...
-  #if [[ -v PRECOMPUTE ]]; then
+  # this takes a lot in any case... not sure if it's worth it
+  if [[ -v PRECOMPUTE ]]; then
     ## precompile what is always known at compile time
-    #newprogram=${program%%[,.]*}
-    #if (( ${#newprogram} < ${#program} )); then
-      ## remove loops until it's safe to eval
-      #while looponly=${newprogram//[![\]]}
-        #open=${looponly//\[}
-        #close=${looponly//\]}
-        #(( ${#open} != ${#close} ))
-      #do
-        #newprogram=${newprogram%[[\]]*}
-        #echo -n . >&2
-      #done
+    i=0 q=0 tape=()
+    while [[ i -lt ${#program} && ${program:i:1} != ["[].,"] ]]; do
+      case ${program:i:1} in
+        z) tape[q]=0 ;;
+        -) (( tape[q] -- )) ;;
+        +) (( tape[q] ++ )) ;;
+        "<") (( q -- )) ;;
+        ">") (( q ++ )) ;;
+        a) mov=${program: ++i:1}
+           (( q += mov , i++ ))
+           while [[ ${program: ++i:1} != "|" ]]; do
+             case ${program:i:1} in
+               z) tape[q]=0 ;;
+               -) (( tape[q] -- )) ;;
+               +) (( tape[q] ++ )) ;;
+               "<") (( q -- )) ;;
+               ">") (( q ++ )) ;;
+             esac
+           done
+           echo $mov >&2
+           (( q -= mov )) ;;
+        a) mov=${program: ++i:1}
+           (( q -= mov, i++ ))
+           while [[ ${program: ++i:1} != "|" ]]; do
+             case ${program:i:1} in
+               z) tape[q]=0 ;;
+               -) (( tape[q] -- )) ;;
+               +) (( tape[q] ++ )) ;;
+               "<") (( q -- )) ;;
+               ">") (( q ++ )) ;;
+             esac
+           done
+           (( q += mov )) ;;
+      esac
+      (( i++ ))
+    done
 
-      #declare -p newprogram >&2
-      #(
-        #program=$newprogram
-        #program_len=${#program}
-        #compiled=$(compile 2>/dev/null)
-        #eval "$compiled"
-        #declare -f go >&2
-        #go
-        ##echo here >&2
-        #declare -p tape i
-        #declare -p tape i >&2
-      #)
-      #program=${program#"$newprogram"}
-      #program_len=${#program}
-    #fi
-  #fi
+    {
+      for k in "${!tape[@]}"; do
+        (( tape[k] )) && printf "tape[%s]=%s," "$k" "${tape[k]}"
+      done
+      (( q )) && echo -n "i=$q,"
+    } | sed 's/..*/((&));/;s/,))/))/' # another sed to fix crap
+  fi
 
 
   while (( i < program_len )); do
@@ -383,7 +399,7 @@ shopt -s expand_aliases
 TIMEFORMAT="compilation time: real: %lR, user: %lU, sys: %lS"
 time compiled=$(compile |
 sed '
-s/  *//g
+s/  *//g                                                              # makes it faster
 :a
 s/));((/,/g                                                           # makes it faster
 s/));\(tape[^;]*\);/,\1));/g                                          # makes it faster
@@ -395,6 +411,7 @@ s/((,/((/                                                             # fix fuck
 s/i+=1\([^0-9]\)/++i\1/g
 s/i-=1\([^0-9]\)/--i\1/g
 ta
+s/tape/t/g                                                            # makes it faster
 ')
 # yay fixing crap with sed
 shopt -u expand_aliases
@@ -407,7 +424,7 @@ prettyprint () {
     {
       echo "#include <stdio.h>
       int main() {
-      char tape[65536] = { 0 };
+      char t[65536] = { 0 };
       size_t i = 0;"
 
       sed '1,2d
@@ -430,7 +447,7 @@ prettyprint () {
     } | tr -s \; | astyle --style=java --remove-brackets
 
   else
-    printf "#!/bin/bash\nLANG=C IFS= i=0 tape=()\n"
+    printf "#!/bin/bash\nLANG=C IFS= i=0 t=()\n"
     [[ $compiled = *getbyte* ]] && declare -f getbyte
     [[ $compiled = *putbyte* ]] && declare -f putbyte
     declare -f go | sed 1d
