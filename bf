@@ -195,7 +195,6 @@ compile() {
                ">") (( q ++ )) ;;
              esac
            done
-           echo $mov >&2
            (( q -= mov )) ;;
         a) mov=${program: ++i:1}
            (( q -= mov, i++ ))
@@ -441,7 +440,7 @@ prettyprint () {
            s/[+-]\{0,1\}=/ & /g
            s/*/ * /g
            s/putbyte/putchar(t[i]);/
-           s/getbyte/tape[i] = getchar();/
+           s/getbyte/t[i] = getchar();/
            $d'
       echo "return 0;}"
     } | tr -s \; | astyle --style=java --remove-brackets
