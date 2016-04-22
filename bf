@@ -443,7 +443,7 @@ prettyprint () {
            s/getbyte/t[i] = getchar();/
            $d'
       echo "return 0;}"
-    } | tr -s \; | astyle --style=java --remove-brackets
+    } | tr -s \; | astyle --style=java --remove-brackets --options=none
 
   else
     printf "#!/bin/bash\nLANG=C IFS= i=0 t=()\n"
